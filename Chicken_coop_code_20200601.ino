@@ -1,13 +1,18 @@
+
 /*
   Based on code from David Naves (http://daveworks.net, http://davenaves.com)
-  2020-06-01 : 
+  2020-06-13 :
+    - Added 433mhz signaling of door status
+  2020-06-01 :
     - Added integration of max timer for opening/closing
     - Opening and closing is only once (controlled by boolean) and only interrupted if sucessfull or max timer
+    - If fails when closing door, first open (reverse turning) before error 
 */
 
 // LIBRARIES
 
 #include <SimpleTimer.h>              //TIMER library from github
+#include <RCSwitch.h>                 // RC switch library
 
 // CONFIG
 
@@ -22,9 +27,11 @@ const int directionCloseCoopDoorMotorB = 8;  // direction close motor b - pin 8
 const int directionOpenCoopDoorMotorB = 9;   // direction open motor b - pin 9
 const int bottomSwitchPin = 26;              // bottom switch is connected to pin 26
 const int topSwitchPin = 27;                 // top switch is connected to pin 27
+const int transmitterPin = 10;              // transmitter connected to pin 10
 
 // DEFINE OBJECTS
 SimpleTimer coopPhotoCellTimer;       //TIMER : init
+RCSwitch doorSwitch = RCSwitch();       //RCswitch : init
 
 // INIT VARIABLES
 
@@ -42,7 +49,7 @@ int bottomSwitchState;                 // bottom switch : var for to hold the sw
 // door variable
 bool dooropen = false;                         // door : opened or closed
 
-A
+
 // DEFINE VARIABLES
 
 // debounce delay
@@ -59,6 +66,11 @@ void setup(void) {
   // WELCOME SERIAL
   Serial.begin(9600); // initialize serial port hardware
   Serial.println("Starting software");
+
+  // TRANSMITTER 433mhz
+  doorSwitch.enableTransmit(transmitterPin);
+  doorSwitch.switchOn("1111111", "00010");   // signal switchOn
+  delay(1000);
 
   //DEFINE SWITCH
   // coop door motor
@@ -91,7 +103,6 @@ void setup(void) {
   Serial.println("Photocell reading duration defined : 10 minutes.");
 
 }
-
 
 
 // ************************************** functions **************************************
@@ -196,11 +207,14 @@ void closeCoopDoorMotorB() {
     digitalWrite (directionOpenCoopDoorMotorB, LOW);       // turn off motor open direction
     analogWrite (enableCoopDoorMotorB, 255);               // enable motor, full speed
     if ((millis() - MotorRunTime) > MaxMotorRunTime) {
+    ;
     error();
     }
   };                       // if bottom reed switch circuit is closed
   stopCoopDoorMotorB();
   dooropen = false;
+  doorSwitch.switchOff("11111", "00010");                // signal door status
+  delay(1000);
   if (SerialDisplay) {
     Serial.println(" Coop Door Closed");
     Serial.println();
@@ -220,6 +234,8 @@ void openCoopDoorMotorB() {
   };
   stopCoopDoorMotorB();
   dooropen = true;
+  doorSwitch.switchOn("11111", "00010");                // signal door status
+  delay(1000);
   if (SerialDisplay) {
     Serial.println(" Coop Door Opened");
     Serial.println();
@@ -255,7 +271,9 @@ void doCoopDoor() {
 void error(){
 stopCoopDoorMotorB();
 Serial.println("Error, stopping");
-while(true) {};
+doorSwitch.setRepeatTransmit(15);       // increases probability of receiving
+doorSwitch.switchOff("1111111", "00010");   // signal error
+while(true) {};                         // stops program
 }
 
 // show values in serial
@@ -274,5 +292,5 @@ void doCoopSerial() {
 void loop() {
   coopPhotoCellTimer.run();      // timer for readPhotoCell
   doCoopDoor();
-  //  doCoopSerial();
+  //doCoopSerial();
 }
